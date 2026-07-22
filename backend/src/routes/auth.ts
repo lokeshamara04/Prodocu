@@ -21,7 +21,8 @@ router.post("/signup", async (req: Request, res: Response) => {
   const body = req.body;
   const parsed = signupSchema.safeParse(body);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+    const messages = parsed.error.issues.map((i) => i.message);
+    res.status(400).json({ error: messages.join("; ") });
     return;
   }
 
@@ -56,7 +57,8 @@ router.post("/login", async (req: Request, res: Response) => {
   const body = req.body;
   const parsed = loginSchema.safeParse(body);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+    const messages = parsed.error.issues.map((i) => i.message);
+    res.status(400).json({ error: messages.join("; ") });
     return;
   }
 
@@ -99,8 +101,9 @@ router.get("/me", async (req: Request, res: Response) => {
   if (!token) {
     res.json({ user: null });
     return;
-  }    try {
-      const decoded = verifyToken(token);
+  }
+  try {
+    const decoded = verifyToken(token);
     res.json({ user: { id: decoded.id, email: decoded.email, name: decoded.name } });
   } catch {
     res.json({ user: null });

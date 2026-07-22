@@ -10,6 +10,15 @@ import exportRoutes from "./routes/export";
 
 dotenv.config();
 
+// Validate required environment variables at startup
+const REQUIRED_ENV_VARS = ["OPENROUTER_API_KEY", "DATABASE_URL", "JWT_SECRET"] as const;
+const missing = REQUIRED_ENV_VARS.filter((v) => !process.env[v]);
+if (missing.length > 0) {
+  console.error(`[startup] Missing required environment variables: ${missing.join(", ")}`);
+  console.error("[startup] Copy backend/.env.example to backend/.env and fill in the values.");
+  process.exit(1);
+}
+
 const app = express();
 const PORT = process.env.PORT || 4000;
 

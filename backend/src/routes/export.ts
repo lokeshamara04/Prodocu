@@ -22,7 +22,7 @@ const EXTENSIONS: Record<string, string> = {
 
 // GET /api/projects/:id/export?format=md|pdf|docx
 router.get("/:id/export", authenticate, async (req: Request, res: Response) => {
-  const format = (req.query.format as string) || "md";
+  const format = ((req.query.format as string) || "md").toLowerCase();
   if (!CONTENT_TYPES[format]) {
     res.status(400).json({ error: "format must be one of: md, pdf, docx" });
     return;

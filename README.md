@@ -95,7 +95,8 @@ curl http://localhost:4000/api/health
 prodocu/
 ├── backend/                        # Express API server (port 4000)
 │   ├── prisma/
-│   │   └── schema.prisma           # User & Project models
+│   │   ├── schema.prisma           # SQLite schema for development
+│   │   └── schema.production.prisma # PostgreSQL schema for production
 │   ├── src/
 │   │   ├── index.ts                # Express app entry
 │   │   ├── routes/
@@ -103,38 +104,44 @@ prodocu/
 │   │   │   ├── projects.ts         # CRUD + zip upload
 │   │   │   ├── analyze.ts          # Ingest → AI pipeline
 │   │   │   └── export.ts           # Download md/pdf/docx
+│   │   ├── middleware/
+│   │   │   └── auth.ts             # JWT authentication middleware
 │   │   └── lib/
 │   │       ├── auth.ts             # JWT sign/verify + bcrypt
 │   │       ├── prisma.ts           # Prisma client singleton
 │   │       ├── ingest.ts           # GitHub tarball / zip parsing
 │   │       ├── openrouter.ts       # OpenRouter prompts + schemas
-│   │       ├── renderDiagram.ts    # Mermaid → PNG/SVG via mermaid.ink
 │   │       ├── buildMarkdown.ts    # Canonical markdown builder
+│   │       ├── renderDiagram.ts    # Mermaid → PNG/SVG via mermaid.ink
+│   │       ├── tempZipStore.ts     # Temporary ZIP file storage
 │   │       └── exporters/
-│   │           ├── markdown.ts
-│   │           ├── pdf.ts
-│   │           └── docx.ts
-│   │── .env.example                # Env var template (copy to .env)
+│   │           ├── markdown.ts     # Markdown export
+│   │           ├── pdf.ts          # PDF export (md-to-pdf)
+│   │           └── docx.ts         # Word export (docx library)
+│   ├── .env.example                # Env var template (copy to .env)
 │   └── package.json
 │
 ├── frontend/                       # Next.js UI (port 3000)
 │   ├── src/
 │   │   ├── app/
+│   │   │   ├── layout.tsx          # Root layout with metadata
+│   │   │   ├── page.tsx            # Landing page
+│   │   │   ├── globals.css         # Tailwind imports
 │   │   │   ├── (auth)/
 │   │   │   │   ├── signin/page.tsx
 │   │   │   │   └── signup/page.tsx
-│   │   │   ├── dashboard/
-│   │   │   │   ├── page.tsx        # Project list
-│   │   │   │   ├── new/page.tsx    # Create new project
-│   │   │   │   └── [id]/page.tsx   # View project docs
-│   │   │   ├── layout.tsx
-│   │   │   └── page.tsx            # Landing page
-│   │   └── components/
-│   │       ├── Navbar.tsx
-│   │       └── StatusBadge.tsx
+│   │   │   └── dashboard/
+│   │   │       ├── page.tsx        # Project list
+│   │   │       ├── new/page.tsx    # Create new project
+│   │   │       └── [id]/page.tsx   # View project docs
+│   │   ├── components/
+│   │   │   ├── Navbar.tsx
+│   │   │   └── StatusBadge.tsx
+│   │   └── lib/
+│   │       └── fetchJson.ts        # Safe fetch wrapper
 │   └── package.json
 │
-├── vercel.json                     # Vercel monorepo config (points to frontend/)
+├── vercel.json                     # Vercel monorepo deployment config
 ├── package.json                    # Root: workspaces + scripts
 └── README.md
 ```
@@ -179,16 +186,14 @@ To change the AI model, set `OPENROUTER_MODEL` in `backend/.env`. Options includ
 - **Secrets:** never commit `.env`. Generate `JWT_SECRET` with `openssl rand -base64 32`.
 - **Temporary ZIP storage:** Uploaded ZIP files are stored in the OS temp directory (`os.tmpdir()`). On multi-instance deployments, swap `backend/src/lib/tempZipStore.ts` to use a shared storage backend like S3 or a database Blob field.
 
----
-
-# Vercel Deployment Guide
+## Vercel Deployment Guide
 
 Prodocu is designed for a two-part deployment:
 
 1. **Frontend** — Next.js app deployed to **Vercel** (free tier available)
 2. **Backend** — Express API deployed separately on a persistent platform (Render, Railway, Fly.io, or as Vercel serverless functions)
 
-## Architecture
+### Architecture
 
 ```
 User → Vercel (Next.js) ──rewrite──→ Backend API (Render / Railway / Fly.io)
@@ -204,9 +209,9 @@ User → Vercel (Next.js) ──rewrite──→ Backend API (Render / Railway /
 - **Storage:** Temp ZIP files on local filesystem — swap to S3/Blob for multi-instance
 - **API routing:** Vercel rewrites proxy `/api/*` requests to the backend via `BACKEND_URL` env var
 
-## Option 1: Deploy frontend to Vercel + backend to Render
+### Option 1: Deploy frontend to Vercel + backend to Render
 
-### 1. Deploy the backend to Render
+#### 1. Deploy the backend to Render
 
 [Render](https://render.com) has a generous free tier and supports long-running Node services (required for the analysis pipeline).
 
@@ -232,15 +237,14 @@ User → Vercel (Next.js) ──rewrite──→ Backend API (Render / Railway /
 
 6. Deploy. Note your backend URL: `https://prodocu-backend.onrender.com`
 
-### 2. Deploy the frontend to Vercel
+#### 2. Deploy the frontend to Vercel
 
 1. In [Vercel Dashboard](https://vercel.com) → **Add New** → **Project**
 2. Import your GitHub repo
 3. Configure:
    - **Framework Preset:** Next.js (auto-detected via `vercel.json`)
-   - **Root Directory:** `frontend` (leave blank — `vercel.json` handles this)
-   - **Build Command:** auto-detected from `vercel.json`
-   - **Output Directory:** auto-detected from `vercel.json`
+   - **Root Directory:** (leave blank — `vercel.json` handles this)
+   - **Build & Output:** auto-detected from `vercel.json`
 4. Add environment variable:
 
 | Variable | Value |
@@ -253,7 +257,7 @@ User → Vercel (Next.js) ──rewrite──→ Backend API (Render / Railway /
 
 > ⚠️ **Render free tier spins down after inactivity** (first request after idle has a ~30s cold start). Upgrade to the Starter plan ($7/mo) for always-on or use [Fly.io](https://fly.io) (free tier with always-on compute).
 
-## Option 2: Deploy both frontend and backend to Vercel (serverless functions)
+### Option 2: Deploy both frontend and backend to Vercel (serverless functions)
 
 For a single-provider deployment, convert the Express backend to Vercel serverless functions:
 
@@ -281,7 +285,7 @@ export default app;
 
 > ⚠️ **Limitation:** Vercel serverless functions have a 60s execution timeout (300s on Pro). The AI analysis pipeline can exceed this. Use Vercel Background Functions or a queue-based worker for long-running analysis.
 
-## Setting up PostgreSQL
+### Setting up PostgreSQL
 
 For production, you'll need a PostgreSQL database:
 
@@ -291,7 +295,7 @@ For production, you'll need a PostgreSQL database:
 
 Set the `DATABASE_URL` env var on your backend to the connection string:
 
-```
+```bash
 postgresql://user:password@host:5432/dbname?sslmode=require
 ```
 
@@ -304,9 +308,9 @@ npx prisma migrate deploy
 
 > 💡 For local development, SQLite is the default (`file:./dev.db`) — no setup required.
 
-## Environment variables summary
+### Environment variables summary
 
-### Backend
+#### Backend
 
 | Variable | Required | Description |
 |---|---|---|
@@ -318,40 +322,13 @@ npx prisma migrate deploy
 | `FRONTEND_URL` | ✅ | Your Vercel frontend URL (for CORS) |
 | `MAX_ZIP_SIZE_MB` | | ZIP upload limit (default `50`) |
 
-### Frontend (in Vercel project settings)
+#### Frontend (in Vercel project settings)
 
 | Variable | Required | Description |
 |---|---|---|
 | `BACKEND_URL` | ✅ | Your deployed backend URL (e.g. `https://prodocu-backend.onrender.com`) |
 
-## Project structure
-
-```
-prodocu/
-├── vercel.json              # Vercel monorepo config (points to frontend/)
-├── backend/                 # Express API server (deployed separately)
-│   ├── prisma/
-│   │   └── schema.prisma    # User & Project models
-│   ├── src/
-│   │   ├── index.ts         # Express app entry
-│   │   └── ...
-│   └── package.json
-├── frontend/                # Next.js UI (deployed to Vercel)
-│   └── package.json
-└── README.md
-```
-
-## Updating after code changes
-
-```bash
-# Push code changes to your Git repository
-# Both Vercel and Render automatically redeploy on push to the connected branch.
-
-# To manually run database migrations after backend deploys:
-npx prisma migrate deploy
-```
-
-## Cost comparison (2026)
+### Cost comparison (2026)
 
 | Platform | Configuration | Monthly Cost |
 |---|---|---|
