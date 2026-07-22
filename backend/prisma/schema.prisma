@@ -1,0 +1,41 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String    @id @default(cuid())
+  name         String?
+  email        String    @unique
+  passwordHash String
+  createdAt    DateTime  @default(now())
+  projects     Project[]
+}
+
+model Project {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name          String
+  sourceType    String   // "github" | "zip"
+  sourceRef     String   // repo URL or original filename
+
+  status        String   @default("pending") // pending | ingesting | analyzing | completed | failed
+  errorMessage  String?
+
+  fileTree      String?  // JSON string: array of file paths analyzed
+  techStack     String?  // JSON string: { languages, frameworks, databases, buildTools, testingTools, architecturePattern, summary }
+  documentation String?  // JSON string: structured doc sections
+  diagrams      String?  // JSON string: array of { title, type, mermaidCode }
+  thesisAnalysis String?  // JSON string: { abstract, theoreticalBackground, designRationale, knownIssues, futureWork, references }
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId])
+}
