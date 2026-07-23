@@ -2,6 +2,9 @@
   "name": "prodocu",
   "version": "1.0.0",
   "private": true,
+  "engines": {
+    "node": "20.x"
+  },
   "description": "AI-powered project documentation generator — monorepo",
   "workspaces": ["frontend", "backend"],
   "scripts": {
@@ -12,6 +15,7 @@
     "db:studio": "npm run db:studio -w backend"
   },
   "devDependencies": {
+    "@types/node": "^20.16.10",
     "concurrently": "^8.2.0"
   }
 }
